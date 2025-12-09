@@ -49,6 +49,19 @@ CORS(app)
 @app.route('/')
 def index():
     return render_template('index.html')
+@app.route('/health')
+def health_check():
+    return jsonify({
+        "status": "healthy", 
+        "message": "Flask app is running",
+        "routes": ["/", "/ask", "/voice", "/weather/<city>", "/quick-action/<action>"]
+    })
+@app.route('/test')
+def test():
+    return "Test page - Flask is working!"    
+    
+    
+    
 # =========== API CONFIGURATION FROM ENVIRONMENT ===========
 # These will be loaded from .env file locally, or from Fly.io secrets in production
 API_KEY = os.environ.get("API_KEY")
