@@ -15,6 +15,8 @@ import tempfile
 from geopy.geocoders import Nominatim
 import base64
 import io
+import markdown
+import traceback
 from PIL import Image
 from dotenv import load_dotenv
 
@@ -228,95 +230,102 @@ def quick_action(action):
 
 # =========== AI FUNCTIONS ===========
 # =========== AI FUNCTIONS ===========
-def ask_ai(prompt):
-    """Use AI for responses with better handling"""
-    headers = {"Content-Type": "application/json"}
-    
-    # Even higher limits
-    data = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {
-            "temperature": 0.7,
-            "maxOutputTokens": 32000,  # Try 32K tokens
-            "topP": 0.95,
-            "topK": 40
-        },
-        "safetySettings": [
-            {
-                "category": "HARM_CATEGORY_HARASSMENT",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_HATE_SPEECH",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                "threshold": "BLOCK_NONE"
-            }
-        ]
-    }
+def ask_ai(prompt: str):
+    """Use Gemini for responses (Markdown → HTML)"""
 
     try:
-        print(f"\n{'='*60}")
-        print(f"ASK_AI CALLED")
-        print(f"Prompt length: {len(prompt)}")
-        print(f"Prompt preview: {prompt[:200]}...")
-        print(f"{'='*60}")
-        
-        response = requests.post(API_URL, headers=headers, json=data, timeout=180)  # 3 minutes
-        
-        print(f"Response status: {response.status_code}")
-        
-        if response.status_code == 200:
-            result = response.json()
-            
-            # Save raw response to file for inspection
-            with open('raw_gemini_response.json', 'w', encoding='utf-8') as f:
-                json.dump(result, f, indent=2, ensure_ascii=False)
-            
-            if 'candidates' in result and result['candidates']:
-                reply = result["candidates"][0]["content"]["parts"][0]["text"]
+        print("\n" + "="*60)
+        print("ASK_AI CALLED")
+        print("Prompt length:", len(prompt))
+        print("Preview:", prompt[:200])
+        print("="*60)
+
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.7,
                 
-                # Check for finishReason
-                finish_reason = result["candidates"][0].get("finishReason", "UNKNOWN")
-                print(f"Finish reason: {finish_reason}")
-                
-                if finish_reason == "MAX_TOKENS":
-                    print("⚠️ WARNING: Response was truncated by token limit!")
-                
-                print(f"Raw reply length: {len(reply)}")
-                
-                # Save raw reply to file
-                with open('raw_reply.txt', 'w', encoding='utf-8') as f:
-                    f.write(reply)
-                
-                # Check if reply ends abruptly
-                last_200 = reply[-200:] if len(reply) > 200 else reply
-                print(f"Last 200 chars of raw reply:\n{last_200}")
-                
-                cleaned = clean_ai_output(reply.strip())
-                print(f"Cleaned length: {len(cleaned)}")
-                
-                return cleaned
-            else:
-                print(f"ERROR: No candidates in response")
-                print(f"Full response: {result}")
-                return "Error: No response generated."
-        else:
-            print(f"ERROR: API returned {response.status_code}")
-            print(f"Response: {response.text[:500]}")
-            return f"API Error {response.status_code}"
-            
+                "topP": 0.95,
+                "topK": 40
+            },
+            "safetySettings": [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+            ],
+        }
+
+        r = requests.post(
+            API_URL,
+            headers={"Content-Type": "application/json"},
+            json=payload,
+            timeout=180
+        )
+
+        print("API status:", r.status_code)
+
+        if r.status_code != 200:
+            print("Error body:", r.text[:500])
+            return f"API Error {r.status_code}"
+
+        data = r.json()
+
+        # Save raw json
+        with open("raw_gemini_response.json", "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+        # Extract content safely
+        candidates = data.get("candidates", [])
+        if not candidates:
+            return "⚠️ Empty response."
+
+        content = candidates[0].get("content", {})
+        parts = content.get("parts", [])
+        if not parts:
+            return "⚠️ No content generated."
+
+        reply = parts[0].get("text", "") or ""
+
+        finish = candidates[0].get("finishReason", "OK")
+        print("Finish reason:", finish)
+        print("Reply length:", len(reply))
+
+        # Save raw text
+        with open("raw_reply.txt", "w", encoding="utf-8") as f:
+            f.write(reply)
+
+        # Auto-close unfinished code blocks
+        reply = fix_code_blocks(reply)
+
+        # Convert Markdown → HTML
+        try:
+            html = markdown.markdown(
+                reply.strip(),
+                extensions=[
+                    "fenced_code",
+                    "codehilite",
+                    "tables",
+                    "nl2br",
+                ]
+            )
+        except Exception:
+            # fallback: plain text
+            html = f"<pre>{reply}</pre>"
+
+        return html
+
     except Exception as e:
-        print(f"Exception in ask_ai: {str(e)}")
-        import traceback
+        print("Exception:", e)
         traceback.print_exc()
-        return f"Error: {str(e)}"
+        return f"Error: {e}"
+def fix_code_blocks(text: str) -> str:
+    # count code blocks
+    blocks = text.count("```")
+    if blocks % 2 != 0:
+        text += "\n```"
+    return text
+
 def analyze_image_with_gemini(prompt, image_base64, image_type="image/jpeg"):
     """Analyze image using Gemini 2.5 Flash - SUPPORTS MULTIPLE FORMATS"""
     
@@ -459,7 +468,7 @@ def format_image_analysis_with_info(text, image_type, image_size):
         return ""
     
     # Clean and format the text
-    text = clean_ai_output(text)
+   
     
     # Add image info header
     file_size_kb = image_size / 1024
@@ -524,97 +533,7 @@ def format_image_analysis_with_info(text, image_type, image_size):
 import html  # Add at top with other imports
 import re
 
-def clean_ai_output(text):
-    """Clean AI output for safe HTML display"""
-    if not text:
-        return ""
-    
-    print(f"Cleaning AI output, original length: {len(text)}")
-    
-    # Step 1: Handle code blocks separately
-    code_blocks = []
-    
-    def save_code_block(match):
-        code_blocks.append(match.group(0))
-        return f"__CODE_BLOCK_{len(code_blocks)-1}__"
-    
-    # Save code blocks before processing
-    text = re.sub(r'```(\w+)?\n([\s\S]*?)```', save_code_block, text)
-    
-    # Step 2: Escape HTML in non-code text for safety
-    # Split into lines and escape non-code lines
-    lines = text.split('\n')
-    processed_lines = []
-    
-    for line in lines:
-        if line.startswith('__CODE_BLOCK_'):
-            # This is a placeholder for a code block
-            processed_lines.append(line)
-        else:
-            # Escape HTML and convert markdown
-            escaped_line = html.escape(line)
-            
-            # Convert markdown to HTML (safe after escaping)
-            escaped_line = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', escaped_line)
-            escaped_line = re.sub(r'\*(.*?)\*', r'<em>\1</em>', escaped_line)
-            escaped_line = re.sub(r'`([^`]+)`', r'<code>\1</code>', escaped_line)
-            
-            processed_lines.append(escaped_line)
-    
-    text = '\n'.join(processed_lines)
-    
-    # Step 3: Restore and format code blocks
-    for i, code_block in enumerate(code_blocks):
-        placeholder = f"__CODE_BLOCK_{i}__"
-        
-        # Parse the code block
-        if code_block.startswith('```'):
-            # Remove triple backticks
-            code_content = code_block[3:]
-            if code_content.endswith('```'):
-                code_content = code_content[:-3]
-            
-            # Check for language identifier
-            first_line = code_content.split('\n', 1)[0]
-            if '\n' in code_content and first_line.strip() and ' ' not in first_line.strip():
-                # Has language identifier
-                language = first_line.strip()
-                code_text = code_content[len(first_line)+1:]  # Skip language line
-            else:
-                language = ''
-                code_text = code_content
-            
-            # Clean and escape code content
-            code_text = html.escape(code_text.strip())
-            
-            # Create HTML code block
-            if language:
-                code_html = f'<pre><code class="language-{language}">{code_text}</code></pre>'
-            else:
-                code_html = f'<pre><code>{code_text}</code></pre>'
-            
-            text = text.replace(placeholder, code_html)
-    
-    # Step 4: Format paragraphs
-    paragraphs = text.split('\n\n')
-    formatted_paragraphs = []
-    
-    for para in paragraphs:
-        para = para.strip()
-        if para:
-            # Check if it's already wrapped in HTML tags
-            if para.startswith('<pre>') or para.startswith('<p>') or para.startswith('<ul>'):
-                formatted_paragraphs.append(para)
-            else:
-                formatted_paragraphs.append(f'<p>{para}</p>')
-    
-    result = '\n'.join(formatted_paragraphs)
-    
-    # Step 5: Convert single newlines to <br> within paragraphs
-    result = re.sub(r'(?<!</p>)\n(?!<p>)', '<br>', result)
-    
-    print(f"Cleaned output length: {len(result)}")
-    return result
+
 def compress_image_if_needed(image_base64, max_size_mb=10):
     """Compress image if it's too large"""
     try:
@@ -833,12 +752,8 @@ def tell_joke():
     joke = random.choice(jokes)
     return f"<div class='joke-container'>😂 <strong>Joke:</strong> {joke}</div>"
 
-# Remove or modify local app paths that won't work on server
-APP_PATHS = {}  # Empty or keep only web apps
-
-# Modify open_app_web function
 def open_app_web(name):
-    """Open application - modified for server environment"""
+    """Open application"""
     name_l = name.lower()
     
     web_apps = {
@@ -853,23 +768,23 @@ def open_app_web(name):
     }
     
     if name_l in web_apps:
-        return f"<a href='{web_apps[name_l]}' target='_blank'>Open {name.title()}</a>"
+        webbrowser.open(web_apps[name_l])
+        return f"Opening {name.title()} in your browser."
     
-    return f"Couldn't find '{name}'. Try: YouTube, WhatsApp, etc."
+    if name_l in APP_PATHS:
+        path = APP_PATHS[name_l]
+        try:
+            os.startfile(path)
+            return f"Opening {name}."
+        except Exception as e:
+            return f"Failed to open {name}: {str(e)}"
+    
+    return f"Couldn't find '{name}'. Try: YouTube, WhatsApp, Chrome, etc."
 
-# Modify the TTS initialization
-try:
-    engine = pyttsx3.init()
-    engine.setProperty("rate", 170)
-    if len(engine.getProperty('voices')) > 1:
-        engine.setProperty('voice', engine.getProperty('voices')[1].id)
-except:
-    engine = None
-    print("⚠️ TTS engine not available (server environment)")
 # =========== MAIN COMMAND PROCESSOR ===========
 # =========== MAIN COMMAND PROCESSOR ===========
 def perform_task_web(command):
-    """Process user commands with better code handling"""
+    """Process user commands with better handling"""
     if not command:
         return "Please provide a command."
     
@@ -924,11 +839,41 @@ def perform_task_web(command):
             webbrowser.open(f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(query)}")
             return f"🎥 Searching YouTube for: <strong>{query}</strong>"
     
-    # CODE REQUESTS - Special handling for code
-    code_keywords = ["code", "program", "write", "create", "how to", "example", "implement", "function", "class"]
-    if any(word in cmd for word in code_keywords):
-        
-            prompt = f"""Please provide complete, well-commented code for: {orig}
+    # **IMPROVED CODE REQUEST DETECTION**
+    # Only trigger code for specific patterns
+    code_triggers = [
+        r"code for",
+        r"program(?:ming|mer)?\s+for",
+        r"write (?:a )?code",
+        r"create (?:a )?program",
+        r"implement.*(?:function|class|algorithm)",
+        r"how to code",
+        r"python.*program",
+        r"javascript.*script",
+        r"html.*page",
+        r"css.*style",
+        r"algorithm for",
+        r"function to",
+        r"class for",
+        r"script for"
+    ]
+    
+    # **ESSAY/WRITING KEYWORDS (should NOT trigger code)**
+    writing_keywords = [
+        "essay", "paragraph", "story", "letter", "article", "composition",
+        "write about", "describe", "explain", "discuss", "summary",
+        "analysis", "review", "report", "paper", "thesis", "dissertation"
+    ]
+    
+    # Check if it's a writing request
+    is_writing_request = any(keyword in cmd for keyword in writing_keywords)
+    
+    # Check if it's a code request
+    is_code_request = any(re.search(pattern, cmd) for pattern in code_triggers) and not is_writing_request
+    
+    if is_code_request:
+        print(f"Detected code request: {cmd}")
+        prompt = f"""Please provide complete, well-commented code for: {orig}
 
 IMPORTANT: 
 1. Provide the FULL code without truncation
@@ -938,15 +883,12 @@ IMPORTANT:
 5. Use appropriate formatting and indentation
 
 Please ensure the response is complete and not truncated."""
-            return ask_ai(prompt)
+        return ask_ai(prompt)
     
-    # FALLBACK TO AI
+    # FALLBACK TO AI for everything else
     return ask_ai(orig)
 def speak_response(text):
-    """Generate speech from text - only works if TTS is available"""
-    if not TTS_AVAILABLE or engine is None:
-        return  # Skip on server
-    
+    """Generate speech from text"""
     try:
         clean_text = re.sub(r'<[^>]+>', '', text)
         clean_text = re.sub(r'[🤖🎂🇧🇩👨👩☪️🔍🎥😂📰]', '', clean_text)
