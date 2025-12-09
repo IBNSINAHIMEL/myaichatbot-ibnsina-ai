@@ -46,7 +46,9 @@ except ImportError:
 load_dotenv()
 app = Flask(__name__)
 CORS(app)
-
+@app.route('/')
+def index():
+    return render_template('index.html')
 # =========== API CONFIGURATION FROM ENVIRONMENT ===========
 # These will be loaded from .env file locally, or from Fly.io secrets in production
 API_KEY = os.environ.get("API_KEY")
