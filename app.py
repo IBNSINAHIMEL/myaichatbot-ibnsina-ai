@@ -1,7 +1,5 @@
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
-import string
-import psutil
 import os
 import sys
 import subprocess
@@ -13,9 +11,6 @@ import requests
 import urllib.parse
 import re
 import platform
-import speech_recognition as sr
-import pyttsx3
-from threading import Thread
 import tempfile
 from geopy.geocoders import Nominatim
 import base64
@@ -23,9 +18,32 @@ import io
 from PIL import Image
 from dotenv import load_dotenv
 
+# Conditional imports for server compatibility
+try:
+    import speech_recognition as sr
+    SPEECH_RECOGNITION_AVAILABLE = True
+except ImportError:
+    SPEECH_RECOGNITION_AVAILABLE = False
+    print("⚠️ speech_recognition not available on server")
+
+try:
+    import pyttsx3
+    TTS_AVAILABLE = True
+except ImportError:
+    pyttsx3 = None
+    TTS_AVAILABLE = False
+    print("⚠️ pyttsx3 not available on server")
+
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    psutil = None
+    PSUTIL_AVAILABLE = False
+    print("⚠️ psutil not available on server")
+
 # Load environment variables
 load_dotenv()
-
 app = Flask(__name__)
 CORS(app)
 
@@ -75,14 +93,19 @@ APP_PATHS = {
 }
 
 # TTS Engine initialization (will only work locally)
-try:
-    engine = pyttsx3.init()
-    engine.setProperty("rate", 170)
-    if len(engine.getProperty('voices')) > 1:
-        engine.setProperty('voice', engine.getProperty('voices')[1].id)
-except:
-    engine = None
-    print("⚠️ TTS engine not available (server environment)")
+# TTS Engine - conditional initialization
+engine = None
+if TTS_AVAILABLE:
+    try:
+        engine = pyttsx3.init()
+        engine.setProperty("rate", 170)
+        if len(engine.getProperty('voices')) > 1:
+            engine.setProperty('voice', engine.getProperty('voices')[1].id)
+    except Exception as e:
+        engine = None
+        print(f"⚠️ Failed to initialize TTS: {e}")
+else:
+    print("⚠️ TTS not available (pyttsx3 not installed)")
 @app.route('/ask', methods=['POST'])
 def ask():
     data = request.json
@@ -905,7 +928,10 @@ Please ensure the response is complete and not truncated."""
     # FALLBACK TO AI
     return ask_ai(orig)
 def speak_response(text):
-    """Generate speech from text"""
+    """Generate speech from text - only works if TTS is available"""
+    if not TTS_AVAILABLE or engine is None:
+        return  # Skip on server
+    
     try:
         clean_text = re.sub(r'<[^>]+>', '', text)
         clean_text = re.sub(r'[🤖🎂🇧🇩👨👩☪️🔍🎥😂📰]', '', clean_text)
