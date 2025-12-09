@@ -262,65 +262,7 @@ function closeAllDrawers() {
     closeLeftDrawer();
     closeRightDrawer();
 }
-function processMessageText(text, isUser) {
-    if (isUser) {
-        // Escape HTML for user messages
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-    
-    // DEBUG: Check what we're receiving
-    console.log('=== processMessageText DEBUG ===');
-    console.log('Input length:', text.length);
-    console.log('First 500 chars:', text.substring(0, 500));
-    console.log('Last 500 chars:', text.substring(text.length - 500));
-    console.log('Has <pre> tags:', text.includes('<pre>'));
-    console.log('Has <p> tags:', text.includes('<p>'));
-    console.log('Has <code> tags:', text.includes('<code>'));
-    console.log('====================');
-    
-    // If text already has HTML tags from Flask, return as-is
-    // Check for common HTML tags that Flask would add
-    const hasHtmlTags = text.includes('<') && text.includes('>') && 
-                       (text.includes('<pre>') || text.includes('<p>') || 
-                        text.includes('<strong>') || text.includes('<em>') || 
-                        text.includes('<code>') || text.includes('<ul>') || 
-                        text.includes('<li>'));
-    
-    if (hasHtmlTags) {
-        console.log('Detected HTML from Flask, returning as-is');
-        return text;
-    }
-    
-    // If no HTML detected, add basic formatting
-    console.log('No HTML detected, adding basic formatting');
-    
-    // Simple markdown to HTML conversion
-    let processed = text;
-    
-    // Code blocks
-    processed = processed.replace(/```(\w+)?\s*\n([\s\S]*?)\n```/g, 
-        '<pre><code>$2</code></pre>');
-    
-    // Inline code
-    processed = processed.replace(/`([^`]+)`/g, '<code>$1</code>');
-    
-    // Bold and italic
-    processed = processed.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    processed = processed.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-    
-    // Line breaks (simple approach)
-    processed = processed.replace(/\n\n/g, '</p><p>');
-    processed = processed.replace(/\n/g, '<br>');
-    
-    // Wrap in paragraph if needed
-    if (!processed.startsWith('<') || processed.startsWith('<br')) {
-        processed = '<p>' + processed + '</p>';
-    }
-    
-    return processed;
-}
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -333,46 +275,107 @@ function formatCodeBlocks(messageBody) {
     codeBlocks.forEach((codeBlock, index) => {
         const pre = codeBlock.parentElement;
         
+        // Get the current text content (after HTML entities are decoded)
+        const originalText = codeBlock.textContent;
+        
         // Clean up any existing broken highlighting
-        codeBlock.innerHTML = codeBlock.textContent
+        const escapedText = originalText
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;');
         
-        // Add copy button
+        codeBlock.innerHTML = escapedText;
+        
+        // Check if copy button already exists
+        const existingCopyBtn = pre.querySelector('.code-copy-btn');
+        if (existingCopyBtn) {
+            existingCopyBtn.remove();
+        }
+        
+        // Create new copy button
         const copyBtn = document.createElement('button');
         copyBtn.className = 'code-copy-btn';
         copyBtn.innerHTML = '<i class="far fa-copy"></i>';
         copyBtn.title = 'Copy code';
         
-        copyBtn.onclick = async function() {
-            const code = codeBlock.textContent;
+        copyBtn.onclick = async function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Get the text to copy
+            const codeToCopy = codeBlock.textContent;
+            
             try {
-                await navigator.clipboard.writeText(code);
+                await navigator.clipboard.writeText(codeToCopy);
                 showToast('Code copied to clipboard!', 'success');
+                
+                // Visual feedback
+                const originalHTML = this.innerHTML;
                 this.innerHTML = '<i class="fas fa-check"></i>';
                 this.style.color = '#10b981';
+                this.title = 'Copied!';
                 
                 setTimeout(() => {
-                    this.innerHTML = '<i class="far fa-copy"></i>';
+                    this.innerHTML = originalHTML;
                     this.style.color = '';
+                    this.title = 'Copy code';
                 }, 2000);
             } catch (err) {
-                showToast('Failed to copy code', 'error');
-                this.innerHTML = '<i class="fas fa-times"></i>';
-                this.style.color = '#ef4444';
+                console.error('Clipboard error:', err);
                 
-                setTimeout(() => {
-                    this.innerHTML = '<i class="far fa-copy"></i>';
-                    this.style.color = '';
-                }, 2000);
+                // Fallback method
+                const textArea = document.createElement('textarea');
+                textArea.value = codeToCopy;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                textArea.style.top = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                
+                try {
+                    const successful = document.execCommand('copy');
+                    if (successful) {
+                        showToast('Code copied to clipboard!', 'success');
+                        
+                        // Visual feedback
+                        const originalHTML = this.innerHTML;
+                        this.innerHTML = '<i class="fas fa-check"></i>';
+                        this.style.color = '#10b981';
+                        this.title = 'Copied!';
+                        
+                        setTimeout(() => {
+                            this.innerHTML = originalHTML;
+                            this.style.color = '';
+                            this.title = 'Copy code';
+                        }, 2000);
+                    } else {
+                        throw new Error('Copy command failed');
+                    }
+                } catch (err2) {
+                    showToast('Failed to copy code. Please select and copy manually.', 'error');
+                    
+                    // Visual feedback for error
+                    const originalHTML = this.innerHTML;
+                    this.innerHTML = '<i class="fas fa-times"></i>';
+                    this.style.color = '#ef4444';
+                    
+                    setTimeout(() => {
+                        this.innerHTML = originalHTML;
+                        this.style.color = '';
+                    }, 2000);
+                } finally {
+                    document.body.removeChild(textArea);
+                }
             }
         };
         
         pre.appendChild(copyBtn);
         
         // Use Highlight.js to detect language and highlight
-        hljs.highlightElement(codeBlock);
+        if (typeof hljs !== 'undefined') {
+            hljs.highlightElement(codeBlock);
+        }
         
         // Get the language that Highlight.js detected
         const language = codeBlock.className
@@ -396,6 +399,12 @@ function formatCodeBlocks(messageBody) {
             }
         }
         
+        // Check if language tag already exists
+        const existingLangTag = pre.querySelector('.code-language');
+        if (existingLangTag) {
+            existingLangTag.remove();
+        }
+        
         // Add language tag
         if (detectedLanguage && detectedLanguage !== 'plaintext') {
             const langTag = document.createElement('span');
@@ -405,34 +414,65 @@ function formatCodeBlocks(messageBody) {
         }
     });
 }
-
-
 function addExpandableFeature(messageBody) {
-    const totalHeight = messageBody.scrollHeight;
-    const containerHeight = 800; // INCREASED from 400 to 800
+    // Reset any existing height restrictions
+    messageBody.style.maxHeight = 'none';
+    messageBody.style.overflow = 'visible';
     
-    // Only add expandable if it's REALLY long (more than 1200px)
-    if (totalHeight > 1200) {
-        messageBody.classList.add('expandable');
-        messageBody.style.maxHeight = containerHeight + 'px';
+    // Remove any existing expand buttons
+    const existingButtons = messageBody.querySelectorAll('.expand-toggle-btn');
+    existingButtons.forEach(btn => btn.remove());
+    
+    // Check the content height
+    const contentHeight = messageBody.scrollHeight;
+    const viewportHeight = window.innerHeight;
+    
+    // Only add expandable feature for very long content (more than 70% of viewport)
+    if (contentHeight > viewportHeight * 0.7) {
+        messageBody.style.maxHeight = (viewportHeight * 0.6) + 'px';
+        messageBody.style.overflow = 'hidden';
         
         const expandBtn = document.createElement('button');
         expandBtn.className = 'expand-toggle-btn';
         expandBtn.innerHTML = 'Show more <i class="fas fa-chevron-down"></i>';
+        expandBtn.style.cssText = `
+            display: block;
+            margin: 10px auto 0;
+            padding: 8px 16px;
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.3s;
+        `;
+        
+        expandBtn.onmouseover = function() {
+            this.style.opacity = '0.9';
+            this.style.transform = 'translateY(-2px)';
+        };
+        
+        expandBtn.onmouseout = function() {
+            this.style.opacity = '1';
+            this.style.transform = 'translateY(0)';
+        };
         
         expandBtn.onclick = function() {
-            if (messageBody.classList.contains('expanded')) {
-                messageBody.classList.remove('expanded');
-                messageBody.style.maxHeight = containerHeight + 'px';
-                this.innerHTML = 'Show more <i class="fas fa-chevron-down"></i>';
-            } else {
-                messageBody.classList.add('expanded');
+            if (messageBody.style.maxHeight && messageBody.style.maxHeight !== 'none') {
+                // Expand
                 messageBody.style.maxHeight = 'none';
+                messageBody.style.overflow = 'visible';
                 this.innerHTML = 'Show less <i class="fas fa-chevron-up"></i>';
+            } else {
+                // Collapse
+                messageBody.style.maxHeight = (viewportHeight * 0.6) + 'px';
+                messageBody.style.overflow = 'hidden';
+                this.innerHTML = 'Show more <i class="fas fa-chevron-down"></i>';
                 
-                // Scroll to show the newly expanded content
+                // Scroll to bottom of collapsed content
                 setTimeout(() => {
-                    messages.scrollTop = messages.scrollHeight;
+                    messageBody.scrollIntoView({ behavior: 'smooth', block: 'end' });
                 }, 100);
             }
         };
@@ -440,6 +480,11 @@ function addExpandableFeature(messageBody) {
         messageBody.appendChild(expandBtn);
     }
 }
+
+
+
+
+
 
 
 // ===== CHAT FUNCTIONS =====
@@ -700,7 +745,6 @@ function removeThinkingMessage(id) {
         thinkingElement.remove();
     }
 }
-
 function addMessage(text, isUser = false) {
     const messageDiv = document.createElement('div');
     messageDiv.className = `message ${isUser ? 'user' : 'ai'}`;
@@ -745,7 +789,16 @@ function addMessage(text, isUser = false) {
     
     const body = document.createElement('div');
     body.className = 'message-body';
-    
+    // ADD THESE STYLES FOR BETTER TEXT WRAPPING:
+body.style.cssText = `
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    white-space: pre-wrap;
+    line-height: 1.6;
+    max-width: 100%;
+`;
+
     // DEBUG: Log what we're receiving
     console.log('=== addMessage DEBUG ===');
     console.log('Input text length:', text.length);
@@ -754,11 +807,8 @@ function addMessage(text, isUser = false) {
     console.log('Contains <pre> tags:', text.includes('<pre>'));
     console.log('Contains <code> tags:', text.includes('<code>'));
     
-    // Sanitize and process the text
-    const processedText = processMessageText(text, isUser);
-    console.log('Processed text length:', processedText.length);
-    
-    body.innerHTML = processedText;
+    // **FIXED**: Set innerHTML directly (not message.body.innerHTML)
+    body.innerHTML = text;
     
     content.appendChild(header);
     content.appendChild(body);
@@ -798,8 +848,10 @@ function addMessage(text, isUser = false) {
             // Add expand/collapse for long content
             addExpandableFeature(body);
             
-            // Add syntax highlighting
-            applySyntaxHighlighting(body);
+            // **FIXED**: Apply syntax highlighting AFTER DOM is updated
+            if (typeof hljs !== 'undefined') {
+                hljs.highlightAll();
+            }
             
             console.log('=== End post-processing ===');
         }, 100);
