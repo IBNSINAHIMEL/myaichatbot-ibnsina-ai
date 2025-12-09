@@ -1,4 +1,4 @@
-app = 'myaichatbot-ibnsina-ai-e'
+app = 'myaichatbot-ibnsina-ai'
 primary_region = 'bom'
 
 [env]
