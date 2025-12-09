@@ -795,8 +795,12 @@ def tell_joke():
     joke = random.choice(jokes)
     return f"<div class='joke-container'>😂 <strong>Joke:</strong> {joke}</div>"
 
+# Remove or modify local app paths that won't work on server
+APP_PATHS = {}  # Empty or keep only web apps
+
+# Modify open_app_web function
 def open_app_web(name):
-    """Open application"""
+    """Open application - modified for server environment"""
     name_l = name.lower()
     
     web_apps = {
@@ -811,19 +815,19 @@ def open_app_web(name):
     }
     
     if name_l in web_apps:
-        webbrowser.open(web_apps[name_l])
-        return f"Opening {name.title()} in your browser."
+        return f"<a href='{web_apps[name_l]}' target='_blank'>Open {name.title()}</a>"
     
-    if name_l in APP_PATHS:
-        path = APP_PATHS[name_l]
-        try:
-            os.startfile(path)
-            return f"Opening {name}."
-        except Exception as e:
-            return f"Failed to open {name}: {str(e)}"
-    
-    return f"Couldn't find '{name}'. Try: YouTube, WhatsApp, Chrome, etc."
+    return f"Couldn't find '{name}'. Try: YouTube, WhatsApp, etc."
 
+# Modify the TTS initialization
+try:
+    engine = pyttsx3.init()
+    engine.setProperty("rate", 170)
+    if len(engine.getProperty('voices')) > 1:
+        engine.setProperty('voice', engine.getProperty('voices')[1].id)
+except:
+    engine = None
+    print("⚠️ TTS engine not available (server environment)")
 # =========== MAIN COMMAND PROCESSOR ===========
 # =========== MAIN COMMAND PROCESSOR ===========
 def perform_task_web(command):
