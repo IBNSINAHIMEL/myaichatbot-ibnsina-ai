@@ -2150,3 +2150,164 @@ pre:hover .code-copy-btn {
 .debug-bg {
     background: rgba(255, 0, 0, 0.1) !important;
 }
+/* Code block styling */
+pre {
+    position: relative;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 16px;
+    margin: 10px 0;
+    overflow-x: auto;
+    border: 1px solid var(--border-color);
+}
+
+.code-copy-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 12px;
+    opacity: 0.8;
+    transition: opacity 0.3s, background 0.3s;
+    z-index: 10;
+}
+
+.code-copy-btn:hover {
+    opacity: 1;
+    background: var(--primary-hover);
+}
+
+.code-language {
+    position: absolute;
+    top: 10px;
+    right: 60px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: rgba(0,0,0,0.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: monospace;
+}
+/* Fix for chat box display issues */
+#messages {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    padding: 20px;
+    overflow-y: auto;
+    width: 100%;
+}
+
+.message {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    max-width: 100%;
+    animation: messageAppear 0.3s ease-out;
+}
+
+.message.user {
+    flex-direction: row-reverse;
+}
+
+.message-content {
+    max-width: 80%;
+    display: flex;
+    flex-direction: column;
+}
+
+.message-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 5px;
+    flex-wrap: wrap;
+}
+
+.message-body {
+    background: var(--bg-secondary);
+    padding: 12px 16px;
+    border-radius: 16px;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    white-space: pre-wrap;
+    overflow: hidden;
+    max-width: 100%;
+    line-height: 1.5;
+}
+
+.message.user .message-body {
+    background: var(--primary-color);
+    color: white;
+    border-bottom-right-radius: 4px;
+}
+
+.message.ai .message-body {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    border-bottom-left-radius: 4px;
+}
+
+/* Avatar styling */
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 18px;
+    flex-shrink: 0;
+}
+
+.message.user .avatar {
+    background: var(--secondary-color);
+}
+
+/* Time styling */
+.time {
+    font-size: 12px;
+    color: var(--text-secondary);
+    opacity: 0.8;
+}
+
+.message.user .time {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* Copy button in messages */
+.copy-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s;
+    font-size: 14px;
+}
+
+.copy-btn:hover {
+    color: var(--primary-color);
+    background: rgba(0, 0, 0, 0.05);
+}
+
+/* Animation */
+@keyframes messageAppear {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
