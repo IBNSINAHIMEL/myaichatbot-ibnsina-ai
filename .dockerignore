@@ -1,2 +1,22 @@
-fly.toml
+.env
 .venv
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+*.log
+logs/
+instance/
+*.sqlite3
+*.db
+README.md
+fly.toml  # KEEP this - Buildpacks needs it
