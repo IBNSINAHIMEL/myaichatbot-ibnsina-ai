@@ -1,0 +1,11 @@
+python-dotenv
+livekit
+livekit-agents
+requests
+SpeechRecognition
+pyttsx3
+comtypes
+pycaw
+google-generativeai
+openai
+Pillow
